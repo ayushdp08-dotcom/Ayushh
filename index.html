@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartServe AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{--bg:#0b0710;--card:#17101f;--bd:#2b2238;--tx:#f3eef8;--mu:#a89bb8;--ac:#5bc0cf;--rd:#e5484d;--am:#f5a524;--gr:#3dd68c;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,sans-serif}
+.app{max-width:760px;margin:0 auto;padding:12px 14px 90px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+h1{font-size:19px;margin:0}h1 span,h3{color:var(--ac)}h3{margin:0 0 8px;font-size:14px;text-transform:uppercase}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 12px;border-radius:10px}
+.p{background:var(--ac);border-color:var(--ac);color:#06161a;font-weight:600}.d{background:var(--rd);border-color:var(--rd)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.k{font-size:11px;color:var(--mu);text-transform:uppercase}.v{font-size:22px;font-weight:700}
+.row{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-top:1px solid var(--bd)}.mu{color:var(--mu);font-size:13px}
+.tag{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600}.fresh{color:var(--gr)}.soon{color:var(--am)}.expired{color:var(--rd)}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--mu);padding:12px 4px}nav .on{color:var(--ac);font-weight:700}
+input,select{font:inherit;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:8px;width:100%;margin:3px 0 8px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px;margin-top:20px}.bars div{flex:1;background:var(--ac);border-radius:5px 5px 0 0;position:relative}
+.bars b{position:absolute;top:-16px;width:100%;text-align:center;font-size:11px;font-weight:400}
+#reader{width:100%;border-radius:12px;overflow:hidden}
+</style></head><body><div class="app">
+<header><div><h1>SmartServe <span>AI</span></h1><div class="mu" id="dt"></div></div><button class="p" onclick="adv()">⏭ Next day</button></header>
+<main id="m"></main></div><nav id="nv"></nav>
+<script>
+const api=(p,o)=>fetch('/api'+p,o).then(r=>{if(!r.ok)throw new Error('API error');return r.json()});
+const J=b=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+const inr=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+let O,tab='home',sel='p1',F,sc={step:0},cam;
+async function load(){O=await api('/overview');F=await api('/forecast/'+sel);draw()}
+async function adv(){O=await api('/advance',{method:'POST'});F=await api('/forecast/'+sel);draw()}
+async function act(u){await api(u,{method:'POST'});load()}
+function home(){const s=O.stats,mx=Math.max(...F.days.map(d=>d.demand));
+return`<div class="grid"><div class="card"><div class="k">At risk (3d)</div><div class="v" style="color:var(--am)">${inr(s.at_risk)}</div></div>
+<div class="card"><div class="k">Recovered</div><div class="v" style="color:var(--gr)">${inr(s.recovered)}</div></div>
+<div class="card"><div class="k">Waste</div><div class="v" style="color:var(--rd)">${inr(s.waste)}</div></div>
+<div class="card"><div class="k">Units sold</div><div class="v">${s.sold}</div></div></div>
+<div class="card"><h3>7-day forecast</h3><select onchange="sel=this.value;load()">${O.products.map(p=>`<option value="${p.id}" ${p.id==sel?'selected':''}>${p.name}</option>`).join('')}</select>
+<div class="bars">${F.days.map(d=>`<div style="height:${d.demand/mx*100}%"><b>${d.demand}</b></div>`).join('')}</div>
+<div class="mu">In stock: ${F.stock}</div></div>
+<div class="card"><h3>Top alerts</h3>${O.alerts.slice(0,3).map(a=>`<div class="row">${a.text}</div>`).join('')||'All clear'}</div>`}
+function stock(){return`<div class="card"><h3>Batches</h3>${O.batches.map(b=>{const s=b.suggestion;
+return`<div class="row"><div><b>${b.product}</b> <span class="mu">#${b.id}</span><div class="mu">${b.qty} units · exp ${b.expiry}${b.disc?' · '+b.disc+'% off live':''}</div>
+${s&&!b.disc?`<div>💡 <b>${s.pct}% off → ${inr(s.price)}</b> <span class="mu">(${s.reason}${s.capped?', capped at cost+5%':''})</span></div>`:''}</div>
+<div style="text-align:right"><span class="tag ${b.status}">${b.status=='expired'?'Expired':b.days_left+'d left'}</span><br>
+${s&&!b.disc?`<button class="p" onclick="act('/batches/${b.id}/discount')">Apply</button>`:''}
+${b.status=='expired'?`<button class="d" onclick="act('/batches/${b.id}/writeoff')">Write off</button>`:''}</div></div>`}).join('')}</div>`}
+function alertsV(){return`<div class="card"><h3>Alerts</h3>${O.alerts.map(a=>`<div class="row">${{expired:'🔴',soon:'🟠',low:'🟡'}[a.type]} ${a.text}</div>`).join('')||'No alerts'}</div>`}
+function scanV(){const x=sc;
+if(x.step==0)return`<div class="card"><h3>1 · Scan barcode</h3><div id="reader"></div>
+<button class="p" style="margin:8px 0" onclick="startCam()">📷 Start camera</button>
+<div class="mu">or type / pick a barcode</div><input id="bc" placeholder="Barcode number">
+<button onclick="lookup($('#bc').value)">Look up</button>
+<div style="margin-top:8px" class="mu">Samples: ${O.products.map(p=>`<a href="#" style="color:var(--ac)" onclick="lookup('${p.barcode}');return false">${p.name}</a>`).join(' · ')}</div></div>`;
+return`<div class="card"><h3>2 · Expiry &amp; quantity</h3><div class="row"><b>${x.name}</b><span class="mu">${x.category||''}</span></div>
+<label class="mu">Photo of expiry label (OCR)</label><input type="file" accept="image/*" capture="environment" onchange="doOcr(this.files[0])">
+<div class="mu" id="ocrmsg">${x.note||''}</div>
+<label class="mu">Expiry date (confirm or edit)</label><input type="date" id="ed" value="${x.date||''}">
+<label class="mu">Quantity</label><input type="number" id="qt" value="12" min="1">
+<button class="p" onclick="save()">Save batch</button> <button onclick="sc={step:0};draw()">Cancel</button></div>`}
+const $=s=>document.querySelector(s);
+async function startCam(){cam=new Html5Qrcode('reader');
+try{await cam.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:140}},async t=>{await cam.stop();lookup(t)})}catch(e){alert('Camera unavailable: '+e)}}
+async function lookup(code){if(!code)return;const r=await api('/barcode/'+code);
+if(!r.found){const n=prompt('Product not found. Enter its name to add it:');if(!n)return;
+const pr=+prompt('Selling price (₹)?','100'),co=+prompt('Cost price (₹)?','70');
+const np=await api('/products',J({name:n,price:pr,cost:co,barcode:code}));await load();sc={step:1,pid:np.id,name:np.name};return draw()}
+let p=r.product;if(!p.id){p=await api('/products',J({name:p.name,category:p.category,price:+prompt('Selling price (₹)?','100'),cost:+prompt('Cost price (₹)?','70'),barcode:code}));await load()}
+sc={step:1,pid:p.id,name:p.name,category:p.category};draw()}
+async function doOcr(f){if(!f)return;$('#ocrmsg').textContent='Reading label…';const fd=new FormData();fd.append('file',f);
+const r=await fetch('/api/ocr',{method:'POST',body:fd}).then(r=>r.json());
+sc.date=r.date;sc.note=r.date?'OCR read: '+r.date+' (please confirm)':(r.note||'Could not read date, enter manually');
+$('#ed').value=r.date||'';$('#ocrmsg').textContent=sc.note}
+async function save(){const e=$('#ed').value;if(!e)return alert('Enter expiry date');
+await api('/batches',J({product_id:sc.pid,qty:+$('#qt').value,expiry:e}));sc={step:0};tab='stock';load()}
+function draw(){$('#dt').textContent='Date: '+O.date;
+const T=[['home','📊 Dashboard'],['scan','📷 Scan'],['stock','📦 Stock'],['al','🔔 Alerts '+O.alerts.length]];
+$('#nv').innerHTML=T.map(t=>`<button class="${t[0]==tab?'on':''}" onclick="tab='${t[0]}';draw()">${t[1]}</button>`).join('');
+$('#m').innerHTML={home,scan:scanV,stock,al:alertsV}[tab]()}
+load();
+</script></body></html>
